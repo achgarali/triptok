@@ -93,7 +93,7 @@ export async function getPublicTripBySlug(slug: string): Promise<TripWithPlaces 
       dayIndex: place.dayIndex,
       notes: place.notes,
       createdAt: place.createdAt,
-      sources: place.sources.map(source => ({
+      sources: place.sources.map((source: typeof place.sources[0]) => ({
         id: source.id,
         placeId: source.placeId,
         platform: source.platform,
