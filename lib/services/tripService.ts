@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma'
+import { query, queryOne } from '@/lib/db'
 import { nanoid } from 'nanoid'
 
 export interface CreateTripInput {
@@ -70,9 +70,10 @@ async function generateUniqueSlug(): Promise<string> {
   while (!isUnique && attempts < maxAttempts) {
     const slug = nanoid(10) // Generate 10-character slug
     
-    const existingTrip = await prisma.trip.findUnique({
-      where: { slug }
-    })
+    const existingTrip = await queryOne<{ id: string }>(
+      'SELECT id FROM trips WHERE slug = $1',
+      [slug]
+    )
 
     if (!existingTrip) {
       return slug
@@ -133,32 +134,49 @@ export async function createTrip(userId: string, input: CreateTripInput): Promis
     // Retry if slug collision occurs (very rare but possible)
     while (attempts < maxAttempts) {
       try {
-        const trip = await prisma.trip.create({
-          data: {
+        const trip = await queryOne<{
+          id: string
+          user_id: string
+          name: string
+          destination: string
+          start_date: Date | null
+          end_date: Date | null
+          is_public: boolean
+          slug: string
+          created_at: Date
+        }>(
+          `INSERT INTO trips (user_id, name, destination, start_date, end_date, is_public, slug)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING id, user_id, name, destination, start_date, end_date, is_public, slug, created_at`,
+          [
             userId,
-            name: name.trim(),
-            destination: destination.trim(),
-            startDate: startDate ? new Date(startDate) : null,
-            endDate: endDate ? new Date(endDate) : null,
+            name.trim(),
+            destination.trim(),
+            startDate ? new Date(startDate) : null,
+            endDate ? new Date(endDate) : null,
             isPublic,
             slug
-          }
-        })
+          ]
+        )
+
+        if (!trip) {
+          throw new Error('Failed to create trip')
+        }
 
         return {
           id: trip.id,
-          userId: trip.userId,
+          userId: trip.user_id,
           name: trip.name,
           destination: trip.destination,
-          startDate: trip.startDate,
-          endDate: trip.endDate,
-          isPublic: trip.isPublic,
+          startDate: trip.start_date,
+          endDate: trip.end_date,
+          isPublic: trip.is_public,
           slug: trip.slug,
-          createdAt: trip.createdAt
+          createdAt: trip.created_at
         }
       } catch (createError: any) {
-        // If it's a unique constraint error on slug, generate a new one
-        if (createError.code === 'P2002' && createError.meta?.target?.includes('slug')) {
+        // If it's a unique constraint error on slug (PostgreSQL error code 23505), generate a new one
+        if (createError.code === '23505' && createError.constraint?.includes('slug')) {
           attempts++
           slug = await generateUniqueSlug()
           continue
@@ -195,21 +213,31 @@ export async function createTrip(userId: string, input: CreateTripInput): Promis
  */
 export async function getUserTrips(userId: string): Promise<Trip[]> {
   try {
-    const trips = await prisma.trip.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' }
-    })
+    const trips = await query<{
+      id: string
+      user_id: string
+      name: string
+      destination: string
+      start_date: Date | null
+      end_date: Date | null
+      is_public: boolean
+      slug: string
+      created_at: Date
+    }>(
+      'SELECT id, user_id, name, destination, start_date, end_date, is_public, slug, created_at FROM trips WHERE user_id = $1 ORDER BY created_at DESC',
+      [userId]
+    )
 
-    return trips.map((trip: typeof trips[0]) => ({
+    return trips.map((trip) => ({
       id: trip.id,
-      userId: trip.userId,
+      userId: trip.user_id,
       name: trip.name,
       destination: trip.destination,
-      startDate: trip.startDate,
-      endDate: trip.endDate,
-      isPublic: trip.isPublic,
+      startDate: trip.start_date,
+      endDate: trip.end_date,
+      isPublic: trip.is_public,
       slug: trip.slug,
-      createdAt: trip.createdAt
+      createdAt: trip.created_at
     }))
   } catch (error: any) {
     const tripError: TripError = {
@@ -227,9 +255,20 @@ export async function getUserTrips(userId: string): Promise<Trip[]> {
  */
 export async function getTripById(tripId: string, userId: string): Promise<Trip> {
   try {
-    const trip = await prisma.trip.findUnique({
-      where: { id: tripId }
-    })
+    const trip = await queryOne<{
+      id: string
+      user_id: string
+      name: string
+      destination: string
+      start_date: Date | null
+      end_date: Date | null
+      is_public: boolean
+      slug: string
+      created_at: Date
+    }>(
+      'SELECT id, user_id, name, destination, start_date, end_date, is_public, slug, created_at FROM trips WHERE id = $1',
+      [tripId]
+    )
 
     if (!trip) {
       const error: TripError = {
@@ -240,7 +279,7 @@ export async function getTripById(tripId: string, userId: string): Promise<Trip>
     }
 
     // Check ownership
-    if (trip.userId !== userId) {
+    if (trip.user_id !== userId) {
       const error: TripError = {
         code: 'FORBIDDEN',
         message: 'Access denied'
@@ -250,18 +289,18 @@ export async function getTripById(tripId: string, userId: string): Promise<Trip>
 
     return {
       id: trip.id,
-      userId: trip.userId,
+      userId: trip.user_id,
       name: trip.name,
       destination: trip.destination,
-      startDate: trip.startDate,
-      endDate: trip.endDate,
-      isPublic: trip.isPublic,
+      startDate: trip.start_date,
+      endDate: trip.end_date,
+      isPublic: trip.is_public,
       slug: trip.slug,
-      createdAt: trip.createdAt
+      createdAt: trip.created_at
     }
   } catch (error: any) {
     // Re-throw TripError as-is
-    if (error.code) {
+    if (error.code && ['NOT_FOUND', 'FORBIDDEN', 'VALIDATION_ERROR', 'CONFLICT'].includes(error.code)) {
       throw error
     }
 
@@ -323,34 +362,79 @@ export async function updateTrip(
   }
 
   try {
-    // Build update data
-    const updateData: any = {}
-    if (name !== undefined) updateData.name = name.trim()
-    if (destination !== undefined) updateData.destination = destination.trim()
-    if (startDate !== undefined) updateData.startDate = startDate ? new Date(startDate) : null
-    if (endDate !== undefined) updateData.endDate = endDate ? new Date(endDate) : null
-    if (isPublic !== undefined) updateData.isPublic = isPublic
+    // Build update query dynamically
+    const updates: string[] = []
+    const values: any[] = []
+    let paramIndex = 1
 
-    // Update trip
-    const trip = await prisma.trip.update({
-      where: { id: tripId },
-      data: updateData
-    })
+    if (name !== undefined) {
+      updates.push(`name = $${paramIndex++}`)
+      values.push(name.trim())
+    }
+    if (destination !== undefined) {
+      updates.push(`destination = $${paramIndex++}`)
+      values.push(destination.trim())
+    }
+    if (startDate !== undefined) {
+      updates.push(`start_date = $${paramIndex++}`)
+      values.push(startDate ? new Date(startDate) : null)
+    }
+    if (endDate !== undefined) {
+      updates.push(`end_date = $${paramIndex++}`)
+      values.push(endDate ? new Date(endDate) : null)
+    }
+    if (isPublic !== undefined) {
+      updates.push(`is_public = $${paramIndex++}`)
+      values.push(isPublic)
+    }
+
+    if (updates.length === 0) {
+      // No updates, return existing trip
+      return existingTrip
+    }
+
+    // Add tripId and userId for WHERE clause
+    values.push(tripId, userId)
+
+    const trip = await queryOne<{
+      id: string
+      user_id: string
+      name: string
+      destination: string
+      start_date: Date | null
+      end_date: Date | null
+      is_public: boolean
+      slug: string
+      created_at: Date
+    }>(
+      `UPDATE trips SET ${updates.join(', ')} 
+       WHERE id = $${paramIndex++} AND user_id = $${paramIndex++}
+       RETURNING id, user_id, name, destination, start_date, end_date, is_public, slug, created_at`,
+      values
+    )
+
+    if (!trip) {
+      const error: TripError = {
+        code: 'NOT_FOUND',
+        message: 'Trip not found'
+      }
+      throw error
+    }
 
     return {
       id: trip.id,
-      userId: trip.userId,
+      userId: trip.user_id,
       name: trip.name,
       destination: trip.destination,
-      startDate: trip.startDate,
-      endDate: trip.endDate,
-      isPublic: trip.isPublic,
+      startDate: trip.start_date,
+      endDate: trip.end_date,
+      isPublic: trip.is_public,
       slug: trip.slug,
-      createdAt: trip.createdAt
+      createdAt: trip.created_at
     }
   } catch (error: any) {
     // Re-throw TripError as-is
-    if (error.code) {
+    if (error.code && ['NOT_FOUND', 'FORBIDDEN', 'VALIDATION_ERROR', 'CONFLICT'].includes(error.code)) {
       throw error
     }
 
@@ -374,12 +458,22 @@ export async function deleteTrip(tripId: string, userId: string): Promise<void> 
 
   try {
     // Delete trip (cascade deletion of places and sources is handled by database)
-    await prisma.trip.delete({
-      where: { id: tripId }
-    })
+    const result = await query(
+      'DELETE FROM trips WHERE id = $1 AND user_id = $2',
+      [tripId, userId]
+    )
+
+    // Check if trip was actually deleted
+    if (result.length === 0) {
+      const error: TripError = {
+        code: 'NOT_FOUND',
+        message: 'Trip not found'
+      }
+      throw error
+    }
   } catch (error: any) {
     // Re-throw TripError as-is
-    if (error.code) {
+    if (error.code && ['NOT_FOUND', 'FORBIDDEN', 'VALIDATION_ERROR', 'CONFLICT'].includes(error.code)) {
       throw error
     }
 
