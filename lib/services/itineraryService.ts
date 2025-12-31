@@ -222,7 +222,7 @@ export async function suggestItinerary(
       }
 
       const placeCount = sortedPlaces.length
-      const types = [...new Set(sortedPlaces.map((p) => p.type))]
+      const types = Array.from(new Set(sortedPlaces.map((p) => p.type)))
       const description =
         placeCount === 1
           ? `1 lieu à visiter`
