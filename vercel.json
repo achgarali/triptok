@@ -13,6 +13,7 @@
     "env": {
       "PRISMA_GENERATE_DATAPROXY": "false",
       "PRISMA_ENGINE_CHECK_BINARY_EXISTS": "false",
+      "PRISMA_CLI_BINARY_TARGETS": "linux-musl-openssl-3.0.x,linux-musl-arm64-openssl-3.0.x,rhel-openssl-1.0.x",
       "SKIP_ENV_VALIDATION": "true"
     }
   },
