@@ -82,7 +82,7 @@ export async function getPublicTripBySlug(slug: string): Promise<TripWithPlaces 
     }
 
     // Build places with sources
-    const places: PlaceWithSources[] = trip.places.map(place => ({
+    const places: PlaceWithSources[] = trip.places.map((place: typeof trip.places[0]) => ({
       id: place.id,
       tripId: place.tripId,
       name: place.name,
