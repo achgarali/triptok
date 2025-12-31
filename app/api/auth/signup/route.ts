@@ -60,7 +60,32 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Handle internal errors
+    if (error.code === 'INTERNAL_ERROR') {
+      console.error('Internal error in signup:', error.message)
+      return NextResponse.json(
+        { error: error.message || 'Internal server error' },
+        { status: 500 }
+      )
+    }
+
     console.error('Error creating user:', error)
+    console.error('Error stack:', error?.stack)
+    console.error('Error message:', error?.message)
+    console.error('Error code:', error?.code)
+    
+    // In development, return more details
+    if (process.env.NODE_ENV === 'development') {
+      return NextResponse.json(
+        { 
+          error: 'Internal server error',
+          details: error?.message || String(error),
+          stack: error?.stack
+        },
+        { status: 500 }
+      )
+    }
+    
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

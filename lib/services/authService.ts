@@ -86,7 +86,19 @@ export async function signup(input: SignupInput): Promise<User> {
     }
 
     // Hash password
-    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS)
+    let passwordHash: string
+    try {
+      passwordHash = await bcrypt.hash(password, SALT_ROUNDS)
+    } catch (bcryptError: any) {
+      console.error('Bcrypt error:', bcryptError)
+      console.error('Bcrypt error message:', bcryptError?.message)
+      console.error('Bcrypt error stack:', bcryptError?.stack)
+      const error: AuthError = {
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to hash password'
+      }
+      throw error
+    }
 
     // Create user
     const user = await prisma.user.create({
