@@ -4,10 +4,18 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
+// Use PRISMA_DATABASE_URL if available (for Prisma Accelerate), otherwise fall back to DATABASE_URL
+const databaseUrl = process.env.PRISMA_DATABASE_URL || process.env.DATABASE_URL
+
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+    datasources: {
+      db: {
+        url: databaseUrl,
+      },
+    },
   })
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
