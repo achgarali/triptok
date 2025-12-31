@@ -6,11 +6,13 @@
   "regions": ["cdg1"],
   "env": {
     "NODE_ENV": "production",
-    "PRISMA_GENERATE_DATAPROXY": "false"
+    "PRISMA_GENERATE_DATAPROXY": "false",
+    "PRISMA_ENGINE_CHECK_BINARY_EXISTS": "false"
   },
   "build": {
     "env": {
       "PRISMA_GENERATE_DATAPROXY": "false",
+      "PRISMA_ENGINE_CHECK_BINARY_EXISTS": "false",
       "SKIP_ENV_VALIDATION": "true"
     }
   },

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run prisma:generate && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest --run",
@@ -15,8 +15,9 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
-    "postinstall": "rm -f .env.production && PRISMA_GENERATE_DATAPROXY=false PRISMA_ENGINE_CHECK_BINARY_EXISTS=false prisma generate",
-    "build:prod": "prisma generate && prisma migrate deploy && next build"
+    "prisma:generate": "rm -rf node_modules/.prisma && PRISMA_GENERATE_DATAPROXY=false PRISMA_ENGINE_CHECK_BINARY_EXISTS=false prisma generate",
+    "postinstall": "rm -f .env.production && npm run prisma:generate",
+    "build:prod": "npm run prisma:generate && prisma migrate deploy && next build"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
