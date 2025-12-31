@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma'
+import { query, queryOne } from '@/lib/db'
 import bcrypt from 'bcrypt'
 
 const SALT_ROUNDS = 10
@@ -73,9 +73,10 @@ export async function signup(input: SignupInput): Promise<User> {
 
   try {
     // Check if email already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email }
-    })
+    const existingUser = await queryOne<{ id: string }>(
+      'SELECT id FROM users WHERE email = $1',
+      [email]
+    )
 
     if (existingUser) {
       const error: AuthError = {
@@ -101,17 +102,19 @@ export async function signup(input: SignupInput): Promise<User> {
     }
 
     // Create user
-    const user = await prisma.user.create({
-      data: {
-        email,
-        passwordHash
-      }
-    })
+    const user = await queryOne<{ id: string; email: string; created_at: Date }>(
+      'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at',
+      [email, passwordHash]
+    )
+
+    if (!user) {
+      throw new Error('Failed to create user')
+    }
 
     return {
       id: user.id,
       email: user.email,
-      createdAt: user.createdAt
+      createdAt: user.created_at
     }
   } catch (error: any) {
     // Re-throw AuthError as-is
@@ -149,9 +152,10 @@ export async function login(input: LoginInput): Promise<User> {
 
   try {
     // Find user by email
-    const user = await prisma.user.findUnique({
-      where: { email }
-    })
+    const user = await queryOne<{ id: string; email: string; password_hash: string; created_at: Date }>(
+      'SELECT id, email, password_hash, created_at FROM users WHERE email = $1',
+      [email]
+    )
 
     // If user doesn't exist, throw authentication error
     if (!user) {
@@ -163,7 +167,7 @@ export async function login(input: LoginInput): Promise<User> {
     }
 
     // Verify password
-    const isPasswordValid = await bcrypt.compare(password, user.passwordHash)
+    const isPasswordValid = await bcrypt.compare(password, user.password_hash)
 
     if (!isPasswordValid) {
       const error: AuthError = {
@@ -177,7 +181,7 @@ export async function login(input: LoginInput): Promise<User> {
     return {
       id: user.id,
       email: user.email,
-      createdAt: user.createdAt
+      createdAt: user.created_at
     }
   } catch (error: any) {
     // Re-throw AuthError as-is
