@@ -600,10 +600,10 @@ export async function getPlacesByTripPaginated(
         }
         grouped.unassigned.push(placeData)
       } else {
-        if (!grouped[place.dayIndex]) {
-          grouped[place.dayIndex] = []
+        if (!grouped[place.day_index]) {
+          grouped[place.day_index] = []
         }
-        grouped[place.dayIndex].push(placeData)
+        grouped[place.day_index].push(placeData)
       }
     }
 
