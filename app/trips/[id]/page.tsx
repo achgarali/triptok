@@ -151,21 +151,31 @@ export default function TripDetailPage() {
   const fetchItinerarySuggestions = useCallback(async () => {
     try {
       setIsLoadingSuggestions(true)
+      console.log('Fetching suggestions for trip:', tripId)
       const response = await fetch(`/api/trips/${tripId}/suggest-itinerary`)
       
       if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Erreur inconnue' }))
+        console.error('Error fetching suggestions:', error)
+        showToast('Erreur lors de la récupération des suggestions', 'error')
         return
       }
 
       const suggestions = await response.json()
+      console.log('Suggestions received:', suggestions)
       setItinerarySuggestions(suggestions)
       setShowSuggestions(true)
+      
+      if (suggestions.length === 0) {
+        showToast('Aucune suggestion disponible. Tous vos lieux sont déjà assignés ou vous n\'avez pas de lieux avec coordonnées.', 'info')
+      }
     } catch (err) {
       console.error('Error fetching suggestions:', err)
+      showToast('Erreur lors de la récupération des suggestions', 'error')
     } finally {
       setIsLoadingSuggestions(false)
     }
-  }, [tripId])
+  }, [tripId, showToast])
 
   const applySuggestion = async (suggestion: any) => {
     try {
@@ -450,7 +460,9 @@ export default function TripDetailPage() {
                 </>
               )}
             </button>
-          ) : itinerarySuggestions.length > 0 && (
+          ) : (
+            <>
+              {itinerarySuggestions.length > 0 ? (
             <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-6 border border-purple-200">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-900">
@@ -507,6 +519,29 @@ export default function TripDetailPage() {
                 ))}
               </div>
             </div>
+              ) : (
+                <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <h3 className="text-sm font-medium text-yellow-800 mb-1">
+                        Aucune suggestion disponible
+                      </h3>
+                      <p className="text-sm text-yellow-700">
+                        Tous vos lieux sont déjà assignés à des jours, ou vous n&apos;avez pas de lieux avec des coordonnées géographiques.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowSuggestions(false)}
+                      className="ml-4 text-yellow-400 hover:text-yellow-600"
+                    >
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
