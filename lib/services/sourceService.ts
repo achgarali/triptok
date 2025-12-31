@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma'
+import { query, queryOne } from '@/lib/db'
 
 export type Platform = 'tiktok' | 'instagram' | 'other'
 
@@ -45,10 +45,16 @@ function isValidPlatform(platform: string): platform is Platform {
  * Verifies that user owns the place (via trip ownership)
  */
 async function verifyPlaceOwnership(placeId: string, userId: string): Promise<void> {
-  const place = await prisma.place.findUnique({
-    where: { id: placeId },
-    include: { trip: true }
-  })
+  const place = await queryOne<{
+    id: string
+    user_id: string
+  }>(
+    `SELECT p.id, t.user_id
+     FROM places p
+     JOIN trips t ON p.trip_id = t.id
+     WHERE p.id = $1`,
+    [placeId]
+  )
 
   if (!place) {
     const error: SourceError = {
@@ -58,7 +64,7 @@ async function verifyPlaceOwnership(placeId: string, userId: string): Promise<vo
     throw error
   }
 
-  if (place.trip.userId !== userId) {
+  if (place.user_id !== userId) {
     const error: SourceError = {
       code: 'FORBIDDEN',
       message: 'Access denied'
@@ -105,24 +111,39 @@ export async function createSource(
     await verifyPlaceOwnership(placeId, userId)
 
     // Create source
-    const source = await prisma.source.create({
-      data: {
+    const source = await queryOne<{
+      id: string
+      place_id: string
+      platform: Platform
+      url: string
+      caption: string | null
+      thumbnail_url: string | null
+      created_at: Date
+    }>(
+      `INSERT INTO sources (place_id, platform, url, caption, thumbnail_url)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, place_id, platform, url, caption, thumbnail_url, created_at`,
+      [
         placeId,
         platform,
-        url: url.trim(),
-        caption: caption?.trim() || null,
-        thumbnailUrl: thumbnailUrl?.trim() || null
-      }
-    })
+        url.trim(),
+        caption?.trim() || null,
+        thumbnailUrl?.trim() || null
+      ]
+    )
+
+    if (!source) {
+      throw new Error('Failed to create source')
+    }
 
     return {
       id: source.id,
-      placeId: source.placeId,
+      placeId: source.place_id,
       platform: source.platform,
       url: source.url,
       caption: source.caption,
-      thumbnailUrl: source.thumbnailUrl,
-      createdAt: source.createdAt
+      thumbnailUrl: source.thumbnail_url,
+      createdAt: source.created_at
     }
   } catch (error: any) {
     // Re-throw SourceError as-is
@@ -146,17 +167,18 @@ export async function createSource(
  */
 export async function deleteSource(sourceId: string, userId: string): Promise<void> {
   try {
-    // Get source and verify it exists
-    const source = await prisma.source.findUnique({
-      where: { id: sourceId },
-      include: {
-        place: {
-          include: {
-            trip: true
-          }
-        }
-      }
-    })
+    // Get source and verify it exists, with trip ownership
+    const source = await queryOne<{
+      id: string
+      user_id: string
+    }>(
+      `SELECT s.id, t.user_id
+       FROM sources s
+       JOIN places p ON s.place_id = p.id
+       JOIN trips t ON p.trip_id = t.id
+       WHERE s.id = $1`,
+      [sourceId]
+    )
 
     if (!source) {
       const error: SourceError = {
@@ -167,7 +189,7 @@ export async function deleteSource(sourceId: string, userId: string): Promise<vo
     }
 
     // Verify user owns the trip (and thus the place)
-    if (source.place.trip.userId !== userId) {
+    if (source.user_id !== userId) {
       const error: SourceError = {
         code: 'FORBIDDEN',
         message: 'Access denied'
@@ -176,9 +198,10 @@ export async function deleteSource(sourceId: string, userId: string): Promise<vo
     }
 
     // Delete source
-    await prisma.source.delete({
-      where: { id: sourceId }
-    })
+    await query(
+      'DELETE FROM sources WHERE id = $1',
+      [sourceId]
+    )
   } catch (error: any) {
     // Re-throw SourceError as-is
     if (error.code) {
@@ -200,19 +223,27 @@ export async function deleteSource(sourceId: string, userId: string): Promise<vo
  */
 export async function getSourcesByPlace(placeId: string): Promise<Source[]> {
   try {
-    const sources = await prisma.source.findMany({
-      where: { placeId },
-      orderBy: { createdAt: 'asc' }
-    })
+    const sources = await query<{
+      id: string
+      place_id: string
+      platform: Platform
+      url: string
+      caption: string | null
+      thumbnail_url: string | null
+      created_at: Date
+    }>(
+      'SELECT id, place_id, platform, url, caption, thumbnail_url, created_at FROM sources WHERE place_id = $1 ORDER BY created_at ASC',
+      [placeId]
+    )
 
-    return sources.map((source: typeof sources[0]) => ({
+    return sources.map((source) => ({
       id: source.id,
-      placeId: source.placeId,
+      placeId: source.place_id,
       platform: source.platform,
       url: source.url,
       caption: source.caption,
-      thumbnailUrl: source.thumbnailUrl,
-      createdAt: source.createdAt
+      thumbnailUrl: source.thumbnail_url,
+      createdAt: source.created_at
     }))
   } catch (error: any) {
     const sourceError: SourceError = {

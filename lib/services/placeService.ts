@@ -1,6 +1,5 @@
-import { prisma } from '@/lib/prisma'
+import { query, queryOne } from '@/lib/db'
 import { getTripById } from './tripService'
-import { Decimal } from '@prisma/client/runtime/library'
 
 export type PlaceType = 'food' | 'bar' | 'cafe' | 'photo' | 'museum' | 'activity' | 'other'
 
@@ -104,24 +103,12 @@ function areCoordinatesValid(lat: number | undefined | null, lng: number | undef
   return true
 }
 
-/**
- * Convert number to Prisma Decimal
- */
-function toDecimal(value: number | null | undefined): Decimal | null {
+// PostgreSQL DECIMAL is returned as string, convert to number
+function parseDecimal(value: string | null | undefined): number | null {
   if (value === null || value === undefined) {
     return null
   }
-  return new Decimal(value)
-}
-
-/**
- * Convert Prisma Decimal to number
- */
-function fromDecimal(value: Decimal | null): number | null {
-  if (value === null) {
-    return null
-  }
-  return value.toNumber()
+  return parseFloat(value)
 }
 
 /**
@@ -176,30 +163,48 @@ export async function createPlace(
     await getTripById(tripId, userId)
 
     // Create place
-    const place = await prisma.place.create({
-      data: {
+    const place = await queryOne<{
+      id: string
+      trip_id: string
+      name: string
+      address: string | null
+      lat: string | null
+      lng: string | null
+      type: PlaceType
+      day_index: number | null
+      notes: string | null
+      created_at: Date
+    }>(
+      `INSERT INTO places (trip_id, name, address, lat, lng, type, day_index, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, trip_id, name, address, lat, lng, type, day_index, notes, created_at`,
+      [
         tripId,
-        name: name.trim(),
-        address: address?.trim() || null,
-        lat: toDecimal(lat),
-        lng: toDecimal(lng),
+        name.trim(),
+        address?.trim() || null,
+        lat ?? null,
+        lng ?? null,
         type,
-        dayIndex: dayIndex ?? null,
-        notes: notes?.trim() || null
-      }
-    })
+        dayIndex ?? null,
+        notes?.trim() || null
+      ]
+    )
+
+    if (!place) {
+      throw new Error('Failed to create place')
+    }
 
     return {
       id: place.id,
-      tripId: place.tripId,
+      tripId: place.trip_id,
       name: place.name,
       address: place.address,
-      lat: fromDecimal(place.lat),
-      lng: fromDecimal(place.lng),
+      lat: parseDecimal(place.lat),
+      lng: parseDecimal(place.lng),
       type: place.type,
-      dayIndex: place.dayIndex,
+      dayIndex: place.day_index,
       notes: place.notes,
-      createdAt: place.createdAt
+      createdAt: place.created_at
     }
   } catch (error: any) {
     // Re-throw PlaceError as-is
@@ -229,11 +234,26 @@ export async function updatePlace(
   const { name, address, lat, lng, type, dayIndex, notes } = input
 
   try {
-    // Get place and verify it exists
-    const existingPlace = await prisma.place.findUnique({
-      where: { id: placeId },
-      include: { trip: true }
-    })
+    // Get place and verify it exists, with trip info
+    const existingPlace = await queryOne<{
+      id: string
+      trip_id: string
+      name: string
+      address: string | null
+      lat: string | null
+      lng: string | null
+      type: PlaceType
+      day_index: number | null
+      notes: string | null
+      created_at: Date
+      user_id: string
+    }>(
+      `SELECT p.id, p.trip_id, p.name, p.address, p.lat, p.lng, p.type, p.day_index, p.notes, p.created_at, t.user_id
+       FROM places p
+       JOIN trips t ON p.trip_id = t.id
+       WHERE p.id = $1`,
+      [placeId]
+    )
 
     if (!existingPlace) {
       const error: PlaceError = {
@@ -244,7 +264,7 @@ export async function updatePlace(
     }
 
     // Verify user owns the trip
-    if (existingPlace.trip.userId !== userId) {
+    if (existingPlace.user_id !== userId) {
       const error: PlaceError = {
         code: 'FORBIDDEN',
         message: 'Access denied'
@@ -273,8 +293,8 @@ export async function updatePlace(
     }
 
     // Validate coordinates
-    const finalLat = lat !== undefined ? lat : fromDecimal(existingPlace.lat)
-    const finalLng = lng !== undefined ? lng : fromDecimal(existingPlace.lng)
+    const finalLat = lat !== undefined ? lat : parseDecimal(existingPlace.lat)
+    const finalLng = lng !== undefined ? lng : parseDecimal(existingPlace.lng)
 
     if (!areCoordinatesValid(finalLat, finalLng)) {
       const error: PlaceError = {
@@ -289,33 +309,97 @@ export async function updatePlace(
       throw error
     }
 
-    // Build update data
-    const updateData: any = {}
-    if (name !== undefined) updateData.name = name.trim()
-    if (address !== undefined) updateData.address = address?.trim() || null
-    if (lat !== undefined) updateData.lat = toDecimal(lat)
-    if (lng !== undefined) updateData.lng = toDecimal(lng)
-    if (type !== undefined) updateData.type = type
-    if (dayIndex !== undefined) updateData.dayIndex = dayIndex
-    if (notes !== undefined) updateData.notes = notes?.trim() || null
+    // Build update query dynamically
+    const updates: string[] = []
+    const values: any[] = []
+    let paramIndex = 1
+
+    if (name !== undefined) {
+      updates.push(`name = $${paramIndex++}`)
+      values.push(name.trim())
+    }
+    if (address !== undefined) {
+      updates.push(`address = $${paramIndex++}`)
+      values.push(address?.trim() || null)
+    }
+    if (lat !== undefined) {
+      updates.push(`lat = $${paramIndex++}`)
+      values.push(lat ?? null)
+    }
+    if (lng !== undefined) {
+      updates.push(`lng = $${paramIndex++}`)
+      values.push(lng ?? null)
+    }
+    if (type !== undefined) {
+      updates.push(`type = $${paramIndex++}`)
+      values.push(type)
+    }
+    if (dayIndex !== undefined) {
+      updates.push(`day_index = $${paramIndex++}`)
+      values.push(dayIndex ?? null)
+    }
+    if (notes !== undefined) {
+      updates.push(`notes = $${paramIndex++}`)
+      values.push(notes?.trim() || null)
+    }
+
+    if (updates.length === 0) {
+      // No updates, return existing place
+      return {
+        id: existingPlace.id,
+        tripId: existingPlace.trip_id,
+        name: existingPlace.name,
+        address: existingPlace.address,
+        lat: parseDecimal(existingPlace.lat),
+        lng: parseDecimal(existingPlace.lng),
+        type: existingPlace.type,
+        dayIndex: existingPlace.day_index,
+        notes: existingPlace.notes,
+        createdAt: existingPlace.created_at
+      }
+    }
+
+    // Add placeId for WHERE clause
+    values.push(placeId)
 
     // Update place
-    const place = await prisma.place.update({
-      where: { id: placeId },
-      data: updateData
-    })
+    const place = await queryOne<{
+      id: string
+      trip_id: string
+      name: string
+      address: string | null
+      lat: string | null
+      lng: string | null
+      type: PlaceType
+      day_index: number | null
+      notes: string | null
+      created_at: Date
+    }>(
+      `UPDATE places SET ${updates.join(', ')}
+       WHERE id = $${paramIndex++}
+       RETURNING id, trip_id, name, address, lat, lng, type, day_index, notes, created_at`,
+      values
+    )
+
+    if (!place) {
+      const error: PlaceError = {
+        code: 'NOT_FOUND',
+        message: 'Place not found'
+      }
+      throw error
+    }
 
     return {
       id: place.id,
-      tripId: place.tripId,
+      tripId: place.trip_id,
       name: place.name,
       address: place.address,
-      lat: fromDecimal(place.lat),
-      lng: fromDecimal(place.lng),
+      lat: parseDecimal(place.lat),
+      lng: parseDecimal(place.lng),
       type: place.type,
-      dayIndex: place.dayIndex,
+      dayIndex: place.day_index,
       notes: place.notes,
-      createdAt: place.createdAt
+      createdAt: place.created_at
     }
   } catch (error: any) {
     // Re-throw PlaceError as-is
@@ -339,11 +423,17 @@ export async function updatePlace(
  */
 export async function deletePlace(placeId: string, userId: string): Promise<void> {
   try {
-    // Get place and verify it exists
-    const place = await prisma.place.findUnique({
-      where: { id: placeId },
-      include: { trip: true }
-    })
+    // Get place and verify it exists, with trip info
+    const place = await queryOne<{
+      id: string
+      user_id: string
+    }>(
+      `SELECT p.id, t.user_id
+       FROM places p
+       JOIN trips t ON p.trip_id = t.id
+       WHERE p.id = $1`,
+      [placeId]
+    )
 
     if (!place) {
       const error: PlaceError = {
@@ -354,7 +444,7 @@ export async function deletePlace(placeId: string, userId: string): Promise<void
     }
 
     // Verify user owns the trip
-    if (place.trip.userId !== userId) {
+    if (place.user_id !== userId) {
       const error: PlaceError = {
         code: 'FORBIDDEN',
         message: 'Access denied'
@@ -363,9 +453,10 @@ export async function deletePlace(placeId: string, userId: string): Promise<void
     }
 
     // Delete place (cascade deletion of sources is handled by database)
-    await prisma.place.delete({
-      where: { id: placeId }
-    })
+    await query(
+      'DELETE FROM places WHERE id = $1',
+      [placeId]
+    )
   } catch (error: any) {
     // Re-throw PlaceError as-is
     if (error.code) {
@@ -387,40 +478,48 @@ export async function deletePlace(placeId: string, userId: string): Promise<void
  */
 export async function getPlacesByTrip(tripId: string): Promise<PlacesByDay> {
   try {
-    const places = await prisma.place.findMany({
-      where: { tripId },
-      orderBy: [
-        { dayIndex: 'asc' },
-        { createdAt: 'asc' }
-      ]
-    })
+    const places = await query<{
+      id: string
+      trip_id: string
+      name: string
+      address: string | null
+      lat: string | null
+      lng: string | null
+      type: PlaceType
+      day_index: number | null
+      notes: string | null
+      created_at: Date
+    }>(
+      'SELECT id, trip_id, name, address, lat, lng, type, day_index, notes, created_at FROM places WHERE trip_id = $1 ORDER BY day_index ASC NULLS LAST, created_at ASC',
+      [tripId]
+    )
 
     const grouped: PlacesByDay = {}
 
     for (const place of places) {
       const placeData: Place = {
         id: place.id,
-        tripId: place.tripId,
+        tripId: place.trip_id,
         name: place.name,
         address: place.address,
-        lat: fromDecimal(place.lat),
-        lng: fromDecimal(place.lng),
+        lat: parseDecimal(place.lat),
+        lng: parseDecimal(place.lng),
         type: place.type,
-        dayIndex: place.dayIndex,
+        dayIndex: place.day_index,
         notes: place.notes,
-        createdAt: place.createdAt
+        createdAt: place.created_at
       }
 
-      if (place.dayIndex === null) {
+      if (place.day_index === null) {
         if (!grouped.unassigned) {
           grouped.unassigned = []
         }
         grouped.unassigned.push(placeData)
       } else {
-        if (!grouped[place.dayIndex]) {
-          grouped[place.dayIndex] = []
+        if (!grouped[place.day_index]) {
+          grouped[place.day_index] = []
         }
-        grouped[place.dayIndex].push(placeData)
+        grouped[place.day_index].push(placeData)
       }
     }
 
@@ -455,20 +554,28 @@ export async function getPlacesByTripPaginated(
     const skip = (normalizedPage - 1) * normalizedLimit
 
     // Get total count
-    const total = await prisma.place.count({
-      where: { tripId }
-    })
+    const totalResult = await queryOne<{ count: string }>(
+      'SELECT COUNT(*) as count FROM places WHERE trip_id = $1',
+      [tripId]
+    )
+    const total = totalResult ? parseInt(totalResult.count) : 0
 
     // Get paginated places
-    const places = await prisma.place.findMany({
-      where: { tripId },
-      orderBy: [
-        { dayIndex: 'asc' },
-        { createdAt: 'asc' }
-      ],
-      skip,
-      take: normalizedLimit
-    })
+    const places = await query<{
+      id: string
+      trip_id: string
+      name: string
+      address: string | null
+      lat: string | null
+      lng: string | null
+      type: PlaceType
+      day_index: number | null
+      notes: string | null
+      created_at: Date
+    }>(
+      'SELECT id, trip_id, name, address, lat, lng, type, day_index, notes, created_at FROM places WHERE trip_id = $1 ORDER BY day_index ASC NULLS LAST, created_at ASC LIMIT $2 OFFSET $3',
+      [tripId, normalizedLimit, skip]
+    )
 
     // Group places by day
     const grouped: PlacesByDay = {}
@@ -476,18 +583,18 @@ export async function getPlacesByTripPaginated(
     for (const place of places) {
       const placeData: Place = {
         id: place.id,
-        tripId: place.tripId,
+        tripId: place.trip_id,
         name: place.name,
         address: place.address,
-        lat: fromDecimal(place.lat),
-        lng: fromDecimal(place.lng),
+        lat: parseDecimal(place.lat),
+        lng: parseDecimal(place.lng),
         type: place.type,
-        dayIndex: place.dayIndex,
+        dayIndex: place.day_index,
         notes: place.notes,
-        createdAt: place.createdAt
+        createdAt: place.created_at
       }
 
-      if (place.dayIndex === null) {
+      if (place.day_index === null) {
         if (!grouped.unassigned) {
           grouped.unassigned = []
         }

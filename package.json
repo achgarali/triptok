@@ -4,20 +4,16 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npm run prisma:generate && next build",
+    "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest --run",
     "test:watch": "vitest",
-    "db:generate": "PRISMA_GENERATE_DATAPROXY=false prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
-    "db:seed": "tsx prisma/seed.ts",
-    "prisma:generate": "rm -rf node_modules/.prisma && PRISMA_GENERATE_DATAPROXY=false PRISMA_ENGINE_CHECK_BINARY_EXISTS=false PRISMA_CLI_BINARY_TARGETS=linux-musl-openssl-3.0.x,linux-musl-arm64-openssl-3.0.x,rhel-openssl-1.0.x prisma generate",
-    "postinstall": "rm -f .env.production && npm run prisma:generate",
-    "build:prod": "npm run prisma:generate && prisma migrate deploy && next build"
+    "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",

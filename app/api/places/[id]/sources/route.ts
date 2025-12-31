@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/getSession'
 import { createSource, getSourcesByPlace } from '@/lib/services/sourceService'
-import { prisma } from '@/lib/prisma'
+import { queryOne } from '@/lib/db'
 import { getTripById } from '@/lib/services/tripService'
 
 /**
@@ -24,10 +24,13 @@ export async function POST(
     const placeId = params.id
 
     // Verify place exists and user owns it (via trip ownership)
-    const place = await prisma.place.findUnique({
-      where: { id: placeId },
-      include: { trip: true }
-    })
+    const place = await queryOne<{
+      id: string
+      trip_id: string
+    }>(
+      'SELECT id, trip_id FROM places WHERE id = $1',
+      [placeId]
+    )
 
     if (!place) {
       return NextResponse.json(
@@ -37,7 +40,7 @@ export async function POST(
     }
 
     // Verify user owns the trip
-    await getTripById(place.trip.id, user.id)
+    await getTripById(place.trip_id, user.id)
 
     // Parse request body
     const body = await request.json()
@@ -105,10 +108,13 @@ export async function GET(
     const placeId = params.id
 
     // Verify place exists and user owns it (via trip ownership)
-    const place = await prisma.place.findUnique({
-      where: { id: placeId },
-      include: { trip: true }
-    })
+    const place = await queryOne<{
+      id: string
+      trip_id: string
+    }>(
+      'SELECT id, trip_id FROM places WHERE id = $1',
+      [placeId]
+    )
 
     if (!place) {
       return NextResponse.json(
@@ -118,7 +124,7 @@ export async function GET(
     }
 
     // Verify user owns the trip
-    await getTripById(place.trip.id, user.id)
+    await getTripById(place.trip_id, user.id)
 
     // Get sources
     const sources = await getSourcesByPlace(placeId)
