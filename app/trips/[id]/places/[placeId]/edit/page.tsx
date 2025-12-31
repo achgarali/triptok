@@ -4,6 +4,7 @@ import { useState, FormEvent, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 
 const PLACE_TYPES = [
   { value: 'food', label: 'Restaurant', icon: '🍽️' },
@@ -578,11 +579,15 @@ export default function EditPlacePage() {
                         </p>
                       )}
                       {extractedMetadata.thumbnailUrl && (
-                        <img
-                          src={extractedMetadata.thumbnailUrl}
-                          alt="Preview"
-                          className="mt-2 rounded-md max-w-xs max-h-32 object-cover"
-                        />
+                        <div className="mt-2 relative w-full max-w-xs h-32">
+                          <Image
+                            src={extractedMetadata.thumbnailUrl}
+                            alt="Preview"
+                            fill
+                            className="rounded-md object-cover"
+                            unoptimized
+                          />
+                        </div>
                       )}
                     </div>
                     <button
@@ -621,11 +626,15 @@ export default function EditPlacePage() {
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       {source.thumbnailUrl && (
-                        <img
-                          src={source.thumbnailUrl}
-                          alt="Thumbnail"
-                          className="w-16 h-16 rounded-md object-cover flex-shrink-0"
-                        />
+                        <div className="relative w-16 h-16 flex-shrink-0">
+                          <Image
+                            src={source.thumbnailUrl}
+                            alt="Thumbnail"
+                            fill
+                            className="rounded-md object-cover"
+                            unoptimized
+                          />
+                        </div>
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">

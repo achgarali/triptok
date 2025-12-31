@@ -446,7 +446,7 @@ export default function TripDetailPage() {
                   <svg className="mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
-                  Obtenir des suggestions d'itinéraire
+                  Obtenir des suggestions d&apos;itinéraire
                 </>
               )}
             </button>
@@ -454,7 +454,7 @@ export default function TripDetailPage() {
             <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-6 border border-purple-200">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-900">
-                  💡 Suggestions d'itinéraire
+                  💡 Suggestions d&apos;itinéraire
                 </h3>
                 <button
                   onClick={() => setShowSuggestions(false)}
@@ -466,7 +466,7 @@ export default function TripDetailPage() {
                 </button>
               </div>
               <p className="text-sm text-gray-600 mb-4">
-                Basé sur vos lieux non assignés, voici des suggestions d'itinéraires optimisés par proximité.
+                Basé sur vos lieux non assignés, voici des suggestions d&apos;itinéraires optimisés par proximité.
               </p>
               <div className="space-y-3">
                 {itinerarySuggestions.map((suggestion) => (
