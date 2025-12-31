@@ -26,6 +26,16 @@ interface Place {
   notes: string | null
 }
 
+interface Source {
+  id: string
+  placeId: string
+  platform: 'tiktok' | 'instagram' | 'other'
+  url: string
+  caption: string | null
+  thumbnailUrl: string | null
+  createdAt: string
+}
+
 export default function EditPlacePage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -44,6 +54,18 @@ export default function EditPlacePage() {
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
   const [isLoading, setIsLoading] = useState(false)
   const [isFetching, setIsFetching] = useState(true)
+  
+  // Sources management
+  const [sources, setSources] = useState<Source[]>([])
+  const [newSourceUrl, setNewSourceUrl] = useState('')
+  const [isExtractingMetadata, setIsExtractingMetadata] = useState(false)
+  const [extractedMetadata, setExtractedMetadata] = useState<{
+    platform: 'tiktok' | 'instagram' | 'other'
+    title?: string
+    description?: string
+    thumbnailUrl?: string
+  } | null>(null)
+  const [isAddingSource, setIsAddingSource] = useState(false)
 
   const fetchPlace = useCallback(async () => {
     try {
@@ -79,6 +101,18 @@ export default function EditPlacePage() {
     }
   }, [tripId, placeId])
 
+  const fetchSources = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/places/${placeId}/sources`)
+      if (response.ok) {
+        const data = await response.json()
+        setSources(data)
+      }
+    } catch (err) {
+      console.error('Error fetching sources:', err)
+    }
+  }, [placeId])
+
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/login')
@@ -87,8 +121,9 @@ export default function EditPlacePage() {
 
     if (status === 'authenticated') {
       fetchPlace()
+      fetchSources()
     }
-  }, [status, router, fetchPlace])
+  }, [status, router, fetchPlace, fetchSources])
 
   const validateForm = (): boolean => {
     const newErrors: { [key: string]: string } = {}
@@ -181,6 +216,102 @@ export default function EditPlacePage() {
 
   const handleCancel = () => {
     router.push(`/trips/${tripId}`)
+  }
+
+  const handleExtractMetadata = async () => {
+    if (!newSourceUrl.trim()) {
+      return
+    }
+
+    setIsExtractingMetadata(true)
+    setExtractedMetadata(null)
+
+    try {
+      const response = await fetch('/api/metadata/extract', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: newSourceUrl }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Erreur lors de l\'extraction des métadonnées')
+      }
+
+      const metadata = await response.json()
+      setExtractedMetadata({
+        platform: metadata.platform,
+        title: metadata.title,
+        description: metadata.description,
+        thumbnailUrl: metadata.thumbnailUrl,
+      })
+    } catch (error: any) {
+      console.error('Error extracting metadata:', error)
+      setErrors({ sources: error.message || 'Erreur lors de l\'extraction des métadonnées' })
+    } finally {
+      setIsExtractingMetadata(false)
+    }
+  }
+
+  const handleAddSource = async () => {
+    if (!newSourceUrl.trim() || !extractedMetadata) {
+      return
+    }
+
+    setIsAddingSource(true)
+
+    try {
+      const response = await fetch(`/api/places/${placeId}/sources`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: newSourceUrl,
+          platform: extractedMetadata.platform,
+          caption: extractedMetadata.description || extractedMetadata.title || null,
+          thumbnailUrl: extractedMetadata.thumbnailUrl || null,
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Erreur lors de l\'ajout de la source')
+      }
+
+      const newSource = await response.json()
+      setSources([...sources, newSource])
+      setNewSourceUrl('')
+      setExtractedMetadata(null)
+      setErrors({})
+    } catch (error: any) {
+      console.error('Error adding source:', error)
+      setErrors({ sources: error.message || 'Erreur lors de l\'ajout de la source' })
+    } finally {
+      setIsAddingSource(false)
+    }
+  }
+
+  const handleDeleteSource = async (sourceId: string) => {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette source ?')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/sources/${sourceId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Erreur lors de la suppression')
+      }
+
+      setSources(sources.filter((s) => s.id !== sourceId))
+    } catch (error: any) {
+      console.error('Error deleting source:', error)
+      setErrors({ sources: error.message || 'Erreur lors de la suppression' })
+    }
   }
 
   if (status === 'loading' || isFetching) {
@@ -379,6 +510,158 @@ export default function EditPlacePage() {
               className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2"
               placeholder="Ajoutez des notes sur ce lieu..."
             />
+          </div>
+
+          {/* Sources Section */}
+          <div className="pt-6 border-t border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              Sources TikTok/Instagram
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Ajoutez des liens TikTok ou Instagram pour référencer ce lieu. Les métadonnées seront extraites automatiquement.
+            </p>
+
+            {errors.sources && (
+              <div className="rounded-md bg-red-50 p-4 mb-4">
+                <div className="text-sm text-red-800">{errors.sources}</div>
+              </div>
+            )}
+
+            {/* Add Source Form */}
+            <div className="bg-gray-50 rounded-lg p-4 mb-4">
+              <div className="flex gap-2 mb-3">
+                <input
+                  type="url"
+                  value={newSourceUrl}
+                  onChange={(e) => setNewSourceUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !extractedMetadata) {
+                      e.preventDefault()
+                      handleExtractMetadata()
+                    }
+                  }}
+                  placeholder="Collez un lien TikTok ou Instagram ici..."
+                  className="flex-1 rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2"
+                />
+                {!extractedMetadata && (
+                  <button
+                    type="button"
+                    onClick={handleExtractMetadata}
+                    disabled={isExtractingMetadata || !newSourceUrl.trim()}
+                    className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                  >
+                    {isExtractingMetadata ? 'Extraction...' : 'Extraire'}
+                  </button>
+                )}
+              </div>
+
+              {/* Extracted Metadata Preview */}
+              {extractedMetadata && (
+                <div className="bg-white rounded-lg p-4 border border-gray-200">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-sm font-medium text-gray-700">
+                          {extractedMetadata.platform === 'tiktok' ? '🎵 TikTok' : 
+                           extractedMetadata.platform === 'instagram' ? '📷 Instagram' : 
+                           '🔗 Autre'}
+                        </span>
+                      </div>
+                      {extractedMetadata.title && (
+                        <p className="text-sm font-medium text-gray-900 mb-1">
+                          {extractedMetadata.title}
+                        </p>
+                      )}
+                      {extractedMetadata.description && (
+                        <p className="text-sm text-gray-600 mb-2">
+                          {extractedMetadata.description}
+                        </p>
+                      )}
+                      {extractedMetadata.thumbnailUrl && (
+                        <img
+                          src={extractedMetadata.thumbnailUrl}
+                          alt="Preview"
+                          className="mt-2 rounded-md max-w-xs max-h-32 object-cover"
+                        />
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExtractedMetadata(null)
+                        setNewSourceUrl('')
+                      }}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddSource}
+                    disabled={isAddingSource}
+                    className="w-full mt-3 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
+                  >
+                    {isAddingSource ? 'Ajout...' : 'Ajouter cette source'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Existing Sources List */}
+            {sources.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-gray-700">Sources existantes</h4>
+                {sources.map((source) => (
+                  <div
+                    key={source.id}
+                    className="flex items-center justify-between bg-white border border-gray-200 rounded-lg p-3"
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      {source.thumbnailUrl && (
+                        <img
+                          src={source.thumbnailUrl}
+                          alt="Thumbnail"
+                          className="w-16 h-16 rounded-md object-cover flex-shrink-0"
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-medium text-gray-500">
+                            {source.platform === 'tiktok' ? '🎵 TikTok' : 
+                             source.platform === 'instagram' ? '📷 Instagram' : 
+                             '🔗 Autre'}
+                          </span>
+                        </div>
+                        {source.caption && (
+                          <p className="text-sm text-gray-900 truncate">{source.caption}</p>
+                        )}
+                        <a
+                          href={source.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:text-blue-800 truncate block"
+                        >
+                          {source.url}
+                        </a>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSource(source.id)}
+                      className="ml-4 text-red-600 hover:text-red-800 flex-shrink-0"
+                      title="Supprimer"
+                    >
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-end space-x-4 pt-4 border-t border-gray-200">

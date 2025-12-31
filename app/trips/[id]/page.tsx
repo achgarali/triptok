@@ -85,6 +85,11 @@ export default function TripDetailPage() {
   const [placesPerPage] = useState(20)
   const [totalPlaces, setTotalPlaces] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
+  
+  // Itinerary suggestions
+  const [itinerarySuggestions, setItinerarySuggestions] = useState<any[]>([])
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
+  const [showSuggestions, setShowSuggestions] = useState(false)
 
   const fetchTrip = useCallback(async () => {
     try {
@@ -142,6 +147,49 @@ export default function TripDetailPage() {
       console.error('Error fetching places:', err)
     }
   }, [tripId, placesPerPage, currentPage])
+
+  const fetchItinerarySuggestions = useCallback(async () => {
+    try {
+      setIsLoadingSuggestions(true)
+      const response = await fetch(`/api/trips/${tripId}/suggest-itinerary`)
+      
+      if (!response.ok) {
+        return
+      }
+
+      const suggestions = await response.json()
+      setItinerarySuggestions(suggestions)
+      setShowSuggestions(true)
+    } catch (err) {
+      console.error('Error fetching suggestions:', err)
+    } finally {
+      setIsLoadingSuggestions(false)
+    }
+  }, [tripId])
+
+  const applySuggestion = async (suggestion: any) => {
+    try {
+      // Update each place with the suggested day
+      for (const place of suggestion.places) {
+        await fetch(`/api/places/${place.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            dayIndex: suggestion.day,
+          }),
+        })
+      }
+
+      showToast(`Itinéraire du jour ${suggestion.day} appliqué avec succès`, 'success')
+      fetchPlaces(currentPage)
+      fetchItinerarySuggestions() // Refresh suggestions
+    } catch (err: any) {
+      console.error('Error applying suggestion:', err)
+      showToast('Erreur lors de l\'application de la suggestion', 'error')
+    }
+  }
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -378,6 +426,90 @@ export default function TripDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Itinerary Suggestions */}
+      {hasPlaces && (
+        <div className="mb-6">
+          {!showSuggestions ? (
+            <button
+              onClick={fetchItinerarySuggestions}
+              disabled={isLoadingSuggestions}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50"
+            >
+              {isLoadingSuggestions ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Chargement...
+                </>
+              ) : (
+                <>
+                  <svg className="mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  Obtenir des suggestions d'itinéraire
+                </>
+              )}
+            </button>
+          ) : itinerarySuggestions.length > 0 && (
+            <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-6 border border-purple-200">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  💡 Suggestions d'itinéraire
+                </h3>
+                <button
+                  onClick={() => setShowSuggestions(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <p className="text-sm text-gray-600 mb-4">
+                Basé sur vos lieux non assignés, voici des suggestions d'itinéraires optimisés par proximité.
+              </p>
+              <div className="space-y-3">
+                {itinerarySuggestions.map((suggestion) => (
+                  <div
+                    key={suggestion.day}
+                    className="bg-white rounded-lg p-4 border border-purple-200 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-lg font-semibold text-purple-600">
+                            Jour {suggestion.day}
+                          </span>
+                          <span className="text-sm text-gray-500">
+                            ~{suggestion.estimatedDuration}h
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-2">{suggestion.description}</p>
+                        <div className="flex flex-wrap gap-2">
+                          {suggestion.places.map((place: Place) => (
+                            <span
+                              key={place.id}
+                              className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-purple-100 text-purple-800"
+                            >
+                              {PLACE_TYPE_ICONS[place.type] || '📍'} {place.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => applySuggestion(suggestion)}
+                        className="ml-4 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                      >
+                        Appliquer
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6">
