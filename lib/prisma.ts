@@ -12,6 +12,15 @@ if (!databaseUrl) {
   throw new Error('DATABASE_URL environment variable is not set')
 }
 
+// Verify that we're using a direct PostgreSQL connection, not Prisma Data Proxy
+if (databaseUrl.startsWith('prisma://') || databaseUrl.startsWith('prisma+postgres://')) {
+  throw new Error(
+    'DATABASE_URL must be a direct PostgreSQL connection (postgres:// or postgresql://). ' +
+    'Prisma Data Proxy URLs (prisma://) are not supported. ' +
+    'Please remove PRISMA_DATABASE_URL from your environment variables if it exists.'
+  )
+}
+
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
