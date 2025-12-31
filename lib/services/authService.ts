@@ -1,0 +1,183 @@
+import { prisma } from '@/lib/prisma'
+import bcrypt from 'bcrypt'
+
+const SALT_ROUNDS = 10
+
+export interface SignupInput {
+  email: string
+  password: string
+}
+
+export interface LoginInput {
+  email: string
+  password: string
+}
+
+export interface User {
+  id: string
+  email: string
+  createdAt: Date
+}
+
+export interface AuthError {
+  code: 'VALIDATION_ERROR' | 'CONFLICT' | 'AUTHENTICATION_ERROR' | 'INTERNAL_ERROR'
+  message: string
+  details?: Array<{ field: string; message: string }>
+}
+
+/**
+ * Validates email format
+ */
+function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email)
+}
+
+/**
+ * Validates password requirements
+ * - Minimum 8 characters
+ */
+function isValidPassword(password: string): boolean {
+  return password.length >= 8
+}
+
+/**
+ * Register a new user with email and password
+ * Validates email format and password requirements
+ * Hashes password before storing
+ * 
+ * @throws AuthError if validation fails or email already exists
+ */
+export async function signup(input: SignupInput): Promise<User> {
+  const { email, password } = input
+
+  // Validate email format
+  if (!isValidEmail(email)) {
+    const error: AuthError = {
+      code: 'VALIDATION_ERROR',
+      message: 'Validation failed',
+      details: [{ field: 'email', message: 'Invalid email format' }]
+    }
+    throw error
+  }
+
+  // Validate password requirements
+  if (!isValidPassword(password)) {
+    const error: AuthError = {
+      code: 'VALIDATION_ERROR',
+      message: 'Validation failed',
+      details: [{ field: 'password', message: 'Password must be at least 8 characters' }]
+    }
+    throw error
+  }
+
+  try {
+    // Check if email already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email }
+    })
+
+    if (existingUser) {
+      const error: AuthError = {
+        code: 'CONFLICT',
+        message: 'Email already exists'
+      }
+      throw error
+    }
+
+    // Hash password
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS)
+
+    // Create user
+    const user = await prisma.user.create({
+      data: {
+        email,
+        passwordHash
+      }
+    })
+
+    return {
+      id: user.id,
+      email: user.email,
+      createdAt: user.createdAt
+    }
+  } catch (error: any) {
+    // Re-throw AuthError as-is
+    if (error.code) {
+      throw error
+    }
+
+    // Wrap unexpected errors
+    const authError: AuthError = {
+      code: 'INTERNAL_ERROR',
+      message: 'An unexpected error occurred'
+    }
+    throw authError
+  }
+}
+
+/**
+ * Authenticate a user with email and password
+ * Validates credentials and returns user information
+ * 
+ * @throws AuthError if credentials are invalid
+ */
+export async function login(input: LoginInput): Promise<User> {
+  const { email, password } = input
+
+  // Validate email format
+  if (!isValidEmail(email)) {
+    const error: AuthError = {
+      code: 'VALIDATION_ERROR',
+      message: 'Validation failed',
+      details: [{ field: 'email', message: 'Invalid email format' }]
+    }
+    throw error
+  }
+
+  try {
+    // Find user by email
+    const user = await prisma.user.findUnique({
+      where: { email }
+    })
+
+    // If user doesn't exist, throw authentication error
+    if (!user) {
+      const error: AuthError = {
+        code: 'AUTHENTICATION_ERROR',
+        message: 'Invalid email or password'
+      }
+      throw error
+    }
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, user.passwordHash)
+
+    if (!isPasswordValid) {
+      const error: AuthError = {
+        code: 'AUTHENTICATION_ERROR',
+        message: 'Invalid email or password'
+      }
+      throw error
+    }
+
+    // Return user information (without password hash)
+    return {
+      id: user.id,
+      email: user.email,
+      createdAt: user.createdAt
+    }
+  } catch (error: any) {
+    // Re-throw AuthError as-is
+    if (error.code) {
+      throw error
+    }
+
+    // Wrap unexpected errors
+    const authError: AuthError = {
+      code: 'INTERNAL_ERROR',
+      message: 'An unexpected error occurred'
+    }
+    throw authError
+  }
+}

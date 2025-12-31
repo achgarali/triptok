@@ -1,0 +1,88 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  trips        Trip[]
+
+  @@map("users")
+}
+
+model Trip {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  name        String
+  destination String
+  startDate   DateTime? @map("start_date") @db.Date
+  endDate     DateTime? @map("end_date") @db.Date
+  isPublic    Boolean   @default(false) @map("is_public")
+  slug        String    @unique
+  createdAt   DateTime  @default(now()) @map("created_at")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  places      Place[]
+
+  @@index([userId])
+  @@index([slug])
+  @@map("trips")
+}
+
+model Place {
+  id        String    @id @default(uuid())
+  tripId    String    @map("trip_id")
+  name      String
+  address   String?
+  lat       Decimal?  @db.Decimal(10, 8)
+  lng       Decimal?  @db.Decimal(11, 8)
+  type      PlaceType
+  dayIndex  Int?      @map("day_index")
+  notes     String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  trip      Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  sources   Source[]
+
+  @@index([tripId])
+  @@index([tripId, dayIndex])
+  @@map("places")
+}
+
+enum PlaceType {
+  food
+  bar
+  cafe
+  photo
+  museum
+  activity
+  other
+}
+
+model Source {
+  id           String   @id @default(uuid())
+  placeId      String   @map("place_id")
+  platform     Platform
+  url          String
+  caption      String?
+  thumbnailUrl String?  @map("thumbnail_url")
+  createdAt    DateTime @default(now()) @map("created_at")
+  place        Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@index([placeId])
+  @@map("sources")
+}
+
+enum Platform {
+  tiktok
+  instagram
+  other
+}
