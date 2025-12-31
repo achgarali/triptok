@@ -145,8 +145,8 @@ export async function createTrip(userId: string, input: CreateTripInput): Promis
           slug: string
           created_at: Date
         }>(
-          `INSERT INTO trips (user_id, name, destination, start_date, end_date, is_public, slug)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `INSERT INTO trips (id, user_id, name, destination, start_date, end_date, is_public, slug)
+           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7)
            RETURNING id, user_id, name, destination, start_date, end_date, is_public, slug, created_at`,
           [
             userId,

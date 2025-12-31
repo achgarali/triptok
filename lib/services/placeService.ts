@@ -175,8 +175,8 @@ export async function createPlace(
       notes: string | null
       created_at: Date
     }>(
-      `INSERT INTO places (trip_id, name, address, lat, lng, type, day_index, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO places (id, trip_id, name, address, lat, lng, type, day_index, notes)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING id, trip_id, name, address, lat, lng, type, day_index, notes, created_at`,
       [
         tripId,

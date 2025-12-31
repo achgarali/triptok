@@ -103,7 +103,7 @@ export async function signup(input: SignupInput): Promise<User> {
 
     // Create user
     const user = await queryOne<{ id: string; email: string; created_at: Date }>(
-      'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at',
+      'INSERT INTO users (id, email, password_hash) VALUES (gen_random_uuid(), $1, $2) RETURNING id, email, created_at',
       [email, passwordHash]
     )
 

@@ -120,8 +120,8 @@ export async function createSource(
       thumbnail_url: string | null
       created_at: Date
     }>(
-      `INSERT INTO sources (place_id, platform, url, caption, thumbnail_url)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO sources (id, place_id, platform, url, caption, thumbnail_url)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)
        RETURNING id, place_id, platform, url, caption, thumbnail_url, created_at`,
       [
         placeId,
