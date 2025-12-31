@@ -91,7 +91,16 @@ export async function suggestItinerary(
 ): Promise<ItinerarySuggestion[]> {
   try {
     // Get all places for the trip
-    const places = await query<Place>(
+    const placesRaw = await query<{
+      id: string
+      name: string
+      address: string | null
+      lat: string | null
+      lng: string | null
+      type: string
+      day_index: number | null
+      notes: string | null
+    }>(
       `SELECT p.id, p.name, p.address, p.lat, p.lng, p.type, p.day_index, p.notes
        FROM places p
        JOIN trips t ON p.trip_id = t.id
@@ -100,8 +109,20 @@ export async function suggestItinerary(
       [tripId, userId]
     )
 
-    // Filter unassigned places (day_index is null)
-    const unassignedPlaces = places.filter((p) => p.day_index === null)
+    // Map to Place interface (convert snake_case to camelCase)
+    const places: Place[] = placesRaw.map((p) => ({
+      id: p.id,
+      name: p.name,
+      address: p.address,
+      lat: p.lat ? parseFloat(p.lat) : null,
+      lng: p.lng ? parseFloat(p.lng) : null,
+      type: p.type,
+      dayIndex: p.day_index,
+      notes: p.notes
+    }))
+
+    // Filter unassigned places (dayIndex is null)
+    const unassignedPlaces = places.filter((p) => p.dayIndex === null)
 
     if (unassignedPlaces.length === 0) {
       return []
