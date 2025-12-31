@@ -4,8 +4,13 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
-// Use PRISMA_DATABASE_URL if available (for Prisma Accelerate), otherwise fall back to DATABASE_URL
-const databaseUrl = process.env.PRISMA_DATABASE_URL || process.env.DATABASE_URL
+// Force Prisma to use DATABASE_URL directly, not PRISMA_DATABASE_URL
+// This ensures we use direct PostgreSQL connection, not Prisma Data Proxy
+const databaseUrl = process.env.DATABASE_URL
+
+if (!databaseUrl) {
+  throw new Error('DATABASE_URL environment variable is not set')
+}
 
 export const prisma =
   globalForPrisma.prisma ??
