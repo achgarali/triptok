@@ -16,7 +16,6 @@
     "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@prisma/client": "^5.20.0",
     "@types/bcrypt": "^5.0.2",
     "@types/leaflet": "^1.9.21",
     "@types/node": "^20.0.0",
