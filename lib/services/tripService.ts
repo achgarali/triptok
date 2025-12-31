@@ -200,7 +200,7 @@ export async function getUserTrips(userId: string): Promise<Trip[]> {
       orderBy: { createdAt: 'desc' }
     })
 
-    return trips.map(trip => ({
+    return trips.map((trip: typeof trips[0]) => ({
       id: trip.id,
       userId: trip.userId,
       name: trip.name,
