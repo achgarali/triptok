@@ -5,16 +5,14 @@
   "framework": "nextjs",
   "regions": ["cdg1"],
   "env": {
-    "NODE_ENV": "production"
+    "NODE_ENV": "production",
+    "PRISMA_GENERATE_DATAPROXY": "false"
   },
   "build": {
     "env": {
       "PRISMA_GENERATE_DATAPROXY": "false",
       "SKIP_ENV_VALIDATION": "true"
     }
-  },
-  "env": {
-    "PRISMA_GENERATE_DATAPROXY": "false"
   },
   "functions": {
     "app/api/**/*.ts": {
