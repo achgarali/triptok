@@ -14,6 +14,7 @@
       "SKIP_ENV_VALIDATION": "true"
     }
   },
+  "installCommand": "unset PRISMA_DATABASE_URL && npm install",
   "functions": {
     "app/api/**/*.ts": {
       "maxDuration": 30
