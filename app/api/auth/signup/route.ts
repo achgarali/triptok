@@ -8,13 +8,12 @@ import { sanitizeEmail, sanitizeString } from '@/lib/utils/sanitize'
  * Rate limited: 5 requests per 15 minutes per IP
  */
 export async function POST(request: NextRequest) {
-  // Apply rate limiting
-  const rateLimitResponse = await withRateLimit(5, 15 * 60 * 1000)(request)
-  if (rateLimitResponse) {
-    return rateLimitResponse
-  }
-
   try {
+    // Apply rate limiting
+    const rateLimitResponse = await withRateLimit(5, 15 * 60 * 1000)(request)
+    if (rateLimitResponse) {
+      return rateLimitResponse
+    }
     const body = await request.json()
     let { email, password } = body
 
