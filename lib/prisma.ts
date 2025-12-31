@@ -1,7 +1,11 @@
-import { PrismaClient } from '@prisma/client'
+// Use edge client in production (Vercel) to work with engine=none
+// Use regular client in development
+const { PrismaClient } = process.env.NODE_ENV === 'production'
+  ? require('@prisma/client/edge')
+  : require('@prisma/client')
 
 const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined
+  prisma: typeof PrismaClient | undefined
 }
 
 // Use PRISMA_DATABASE_URL if available (for Prisma Accelerate/Data Proxy)
