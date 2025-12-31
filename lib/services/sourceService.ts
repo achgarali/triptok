@@ -205,7 +205,7 @@ export async function getSourcesByPlace(placeId: string): Promise<Source[]> {
       orderBy: { createdAt: 'asc' }
     })
 
-    return sources.map(source => ({
+    return sources.map((source: typeof sources[0]) => ({
       id: source.id,
       placeId: source.placeId,
       platform: source.platform,
